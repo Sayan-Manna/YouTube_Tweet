@@ -1,0 +1,18 @@
+{
+  "name": "chaiyoutube",
+  "version": "1.0.0",
+  "description": "YouTube clone with Tweet feature",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "javascript",
+    "backend",
+    "express",
+    "mongodb",
+    "mern"
+  ],
+  "author": "Sayan Manna",
+  "license": "ISC"
+}
