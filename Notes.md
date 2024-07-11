@@ -266,6 +266,144 @@ status: {
 		PORT=4000
 		MONGODB_URI=mongodb+srv://.....
 		```
-# Custom API response and Exception Handling
+# Setup middleware, Custom API response and Exception Handling
 
+- In `app.js` we'll write express codes here
+	```js
+	// src/app.js
+	import express from 'express';
+
+	const app = express()
+
+	export {app}
+	
+	```
+- Now we know when an `async` method is completed, it returns a promise as well. So in our `index.js` we'll modify the code
+	```js
+	// index.js
+	import {app} from "./app.js"
+	...
+	...
+	// Connect to MongoDB
+	connectDB()
+	.then(()=>{
+	  app.on("error", (error) => {
+	    console.log("ERRR: ", error);
+	    throw error;
+	  })
+	  app.listen(process.env.PORT || 8000, () => {
+	    console.log(`Server is running on port ${process.env.PORT}`);
+	  })
+	})
+	.catch((error) => {
+	  console.log("MongoDB Connection Failed : ", error);
+	})
+	```
+- Visit Express API Ref page. There you'll find Application, Request, Response, Router etc. Majorly we focus on Request and Response
+- Now in request we have a lot of properties to choose like- `req.body`, `req.cookie`,`req.fresh`,`req.host`,`req.hostname`,`req.ip`,`req.method`,`req.param`,`req.path`,`req.protocol`,`req.baseUrl`,`req.query` etc.
+- Install required packages - `cookie-parser`,`cors`
+	- “parse” means to read, interpret, and convert incoming data into a format that the application can work with. Specifically, it refers to the process of analysing the structure of the incoming data (such as JSON, URL-encoded data, or cookies) and transforming it into a JavaScript object or other data structures that the Express application can easily manipulate and use.
+	```js
+	import express from 'express';
+	import cors from 'cors';
+	import cookieParser from 'cookie-parser';
+	
+	const app = express();
+	//  middleware
+	app.use(cors({
+		// add CORS_ORIGIN in env file => CORS_ORIGIN=* (from any place req is coming)
+	  origin: process.env.CORS_ORIGIN,
+	  credentials: true
+	}));
+	/* Middleware to parse incoming requests.
+	 * We can get data from various sources:
+	 * - URL parameters
+	 * - JSON payloads in the body of the request
+	 * - Form data in the body of the request
+	 */
+	// To parse JSON requests with a limit of 16kb
+	app.use(express.json({limit: '16kb'})); // accept json limit of 16kb
+	// To parse URL-encoded data with a limit of 16kb
+	app.use(express.urlencoded({extended: true, limit: '16kb'}));
+	// To serve static files like images, CSS, and JavaScript from the 'public' directory
+	app.use(express.static('public'));
+	// To parse cookies from incoming requests
+	// Main mere server se user ki cookies access kar pau aur cookies set vi kar pau
+	// basically crud operations kar pau cookies pe.
+	app.use(cookieParser());
+	
+	export {app}
+
+	```
+- **Middleware** :
+		- If we are requesting a route /about, first the checking will be if I am logged in or not, these chekings are done by middlewares. There can be multiple middlewares. Now it has flags named `next`. It simply refers that one middleware's job is done, go to next middleware if any, if there isn't any then it will be discarded and we'll get the response. Generally we get 4 params in any request `error`,`req`,`res`,`next`
+		
+- Create an `utils/asyncHandler.js`
+	```js
+	// src/utils/asyncHanfler.js
+	// Using Promise
+	const asyncHandler = (requestHandler) => {
+	    return (req, res, next) => {
+	        Promise.resolve(requestHandler(req, res, next)).catch((error) =>
+	            next(error)
+	        );
+	    };
+	};
+	
+	// Using async/await
+	// asyncHandler is a higher order function so it can accept a function as an argument and return a new function.
+	// const asyncHandler = (fn) => async (req, res, next) => {
+	//     try {
+	//       await fn(req, res, next);
+	//     } catch (error) {
+	//         res.status(error.code || 500).json({
+	//             success: false,
+	//             message: error.message || "Something went wrong",
+	//         });
+	//     }
+	// };
+	export { asyncHandler };
+
+	```
+- Now we want to optimise the responses when error occurs, because later we might get confuse if we want to show the message first or the status code etc.
+```js
+// src/utils/ApiError.js
+class ApiError extends Error {
+    constructor(
+        statusCode,
+        message = "Something went wrong",
+        errors = [],
+        errorStack = ""
+    ) {
+        // to override, we use super, now message has been passed, so it'll be overridden definitely
+        super(message);
+        this.statusCode = statusCode;
+        this.data = null;
+        this.message = message;
+        this.success = false;
+        this.errors = errors;
+
+        if (errorStack) {
+            this.stack = errorStack;
+        } else {
+            Error.captureStackTrace(this, this.constructor);
+        }
+    }
+}
+export {ApiError}
+
+```
+
+```js
+//src/utils/ApiResponse.js
+class ApiResponse {
+  constructor(statusCode, data, message = "Success"){
+      this.statusCode = statusCode
+      this.data = data
+      this.message = message
+      this.success = statusCode < 400
+  }
+}
+export { ApiResponse }
+```
 # 
