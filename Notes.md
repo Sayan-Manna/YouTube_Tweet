@@ -610,7 +610,91 @@ export { ApiResponse };
         ...
         ```
 
-# Upload file using Multer
+# Upload file using Multer + Cloudinary
+
+-   Set up Cloudinary service. Store the credentials in env
+-   We'll be using `multer` or `express-fileupload` as a middleware.
+-   File gets uploaded through multer to cloudinary
+-   **Strategy**:
+    1.  User file -> store in local server temporarily -> Take file from cloudinary through multer -> store it in server
+    2.  User file -> multer sends file to cloudinary -> store it in server
+        We'll be using the 1st technique because user gets a chance to reupload their file if needed.
+-   Create `utils/cloudinary.js`
+
+    -   We'll get the files through filesystem. That means files are already uploaded to local server. -> So we'll take the local path from the server -> send the file from the path to cloudinary
+    -   Now if file is uploaded successfully, our server doesn't need the file anymore so remove it from the local server.
+
+    ```js
+    import { v2 as cloudinary } from "cloudinary";
+    import fs from "fs"; // Node.js file system module -> helps in R,W,Remove etc on file
+    import { request } from "http";
+
+    // Configuration
+    cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+
+    const uploadOnCloudinary = async (localFilePath) => {
+        try {
+            if (!localFilePath) {
+                throw new Error("Local file path is required");
+            }
+            const response = await cloudinary.uploader
+                .upload(localFilePath, {
+                    resource_type: "auto", // Automatically determine the type of file
+                })
+                .catch((error) => {
+                    throw new Error("Error uploading file to cloudinary");
+                });
+            console.log("Upload successful: ", response.url);
+            return response;
+        } catch (error) {
+            // when you remove a file, it basically unlinks from the file system - os concept
+            // At this stage, file is there in my server but maybe it is not uploaded to cloudinary
+            // so to cleanup -> remove local file from my server 1st
+            // unlinksync -> do the unlinking in synchronous process -> we'll move forward only when it is unlinked
+            fs.unlinkSync(localFilePath); // remove the locally saved temp file as the upload operation filed
+            return null;
+        }
+    };
+
+    export { uploadOnCloudinary };
+    ```
+
+-   Create the multer middleware
+-   It's a middleware for handling `multipart/form-data`, which is primarily used for uploading `files`. This configuration specifies how and where the uploaded files should be stored
+
+    ```js
+    // middleware/multer.middleware.js
+    import multer from "multer";
+    // we'll be using diskstorage as memorystorage is risky and might cause problems
+    // This function creates a storage engine for multer that allows you to control where and how the files are stored.
+    // It is essentially like this var = multer.diskStorage({key:value})
+    const storage = multer.diskStorage({
+        // A function that specifies the folder where the uploaded files should be stored.
+        destination: function (req, file, cb) {
+            // callback function
+            cb(null, "./public/temp"); // depends on your file structure
+        },
+        // function that specifies the name of the file that will be saved.
+        filename: function (req, file, cb) {
+            //// Generates a unique suffix using the current timestamp and a random number.
+            // const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+            console.log("file: ", file);
+            // cb(null, file.fieldname + "-" + uniqueSuffix);
+            // Calls the callback with null as the first argument (indicating no error) and the original name of the file (file.originalname) as the filename. This means the uploaded file will be saved with its original name.
+            cb(null, file.originalname);
+        },
+    });
+    // multer is called with an options object. The object has one property, storage, set to the storage variable you defined.
+    // This tells multer to use the provided storage configuration for handling file uploads.
+    // This instance (upload) can now be used as middleware to handle file uploads in your routes.
+    export const upload = multer({ storage: storage });
+    ```
+
+---
 
 # HTTP
 
