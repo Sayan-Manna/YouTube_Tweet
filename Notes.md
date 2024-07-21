@@ -696,6 +696,4 @@ export { ApiResponse };
 
 ---
 
-# HTTP
-
 # Router and Controller
