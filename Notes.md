@@ -282,13 +282,13 @@ status: {
 
         ```js
         // src/index.js
-        // require('dotenv').config({path: './env'})
+        // require('dotenv').config({path: './.env'})
         //  we have to configure our package.json to load env as well
         import dotenv from "dotenv";
         import connectDB from "./db/index.js";
         // env var location
         dotenv.config({
-            path: "./env",
+            path: "./.env",
         });
 
         // Connect to MongoDB
@@ -610,6 +610,8 @@ export { ApiResponse };
         ...
         ```
 
+---
+
 # Upload file using Multer + Cloudinary
 
 -   Set up Cloudinary service. Store the credentials in env
@@ -696,4 +698,182 @@ export { ApiResponse };
 
 ---
 
-# Router and Controller
+# Router and Controller - Basic Setup
+
+-   First we will create `routes` folder to write routes for the user
+
+```js
+// src/routes/user.router.js
+import { Router } from "express";
+
+const router = Router();
+
+export default router;
+```
+
+-   Now in `app.js`
+
+```js
+...
+...
+// routes
+import userRouter from "./routes/user.routes.js";
+
+// routes declaration
+// As we have separated our router and declaring routes here, we need to use middleware instead of just app.get etc
+app.use("/api/v1/users", userRouter);
+
+export {app}
+```
+
+-   Now we want to make the registration post req. We write the logic in Controllers
+
+```js
+// src/controller/user.controller.js
+mport { asyncHandler } from "../utils/asyncHandler.js";
+
+const registerUser = asyncHandler(async (req, res, next) => {
+	// TESTING ONLY
+    res.status(200).json({
+        success: true,
+        message: "Register user",
+    });
+});
+
+export { registerUser };
+
+```
+
+-   Now back in `user.router.js`
+
+```js
+...
+import { registerUser } from "../controllers/user.controller.js";
+
+const router = Router();
+
+router.route("/register").post(registerUser);
+
+export default router;
+```
+
+> [!Summary]+
+>
+> -   Create a basic controller -> where we write our main logics -> also handle exceptions
+> -   Create the router from express then using the router we'll define routes and make requests like get, post etc
+> -   Now for request mapping, let's choose app.js file and as we have separated everything, to use router we need to use middleware so `app.use("api/v1/users", userRouter)`
+> -   Now userRouter will have controll, which is nothing but our defined router. Write the final uri (/register) and method(get, post, put etc)
+
+# Router and Controller - Register Logic
+
+-   Now to make a user register what are the steps that are need to be followed??
+    > [!note]+
+    >
+    > -   Get data from form, uri as params, cookies etc. So extract the data
+    > -   Maybe front-end might not validate the details so revalidate in server side as well
+    > -   Check if user already exists
+    > -   Check for required files are there or not (for file/image)
+    > -   If available -> upload to cloudinary or other services to get the url
+    > -   Create the object -> entry in mongoDB
+    > -   Remove password(although it will be hashed), refresh token from response as we don't want to show this to the client
+    > -   Check for user creation and return response
+
+```js
+// user.controller.js
+import {User} from "../models/user.model.js"
+...
+...
+const registerUser = asyncHandler(async (req, res,next) => {
+	// #1
+	const {fullname, email, username, password} = req.body;
+	// #2 (here just checking if required any filed is empty)
+	if ([fullname, email, username, password].some(
+		(field) => field?.trim() === ""
+	)) {
+		throw new ApiError(400, "All fields are required")
+	}
+	// #3 -> User is coming from mongoose Schema
+	// findOne-> jo vi pehle find ho or use find
+	const existedUser = await User.findOne({ $or: [{email}, {username}] })
+	if (existedUser) throw new ApiError(409, "....")
+	// #4 -> for this make changes on router to accept files as we don't get them from req body
+	...
+
+})
+```
+
+```js
+// user.router.js
+import { upload } from "../middlewares/multer.middleware.js"; // multer
+...
+router.route("/register").post(
+	// array -> ek hi field me multiple files leta hy, we don't want that
+	// single => for single file upload handle
+	// for multiple files accept -> accepts array of multiple fields
+	upload.fields([
+		{
+			name:"avatar", // has be same as in form or front-end
+			maxCount:1
+		},
+		{
+			name: "coverImage",
+			maxCount: 1
+		}
+	]),
+	registerUser
+)
+```
+
+-   Now back in controller
+
+```js
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
+...
+const registerUser = asyncHandler(async (req, res,next) => {
+	...
+	// #4 --> get local path of the files
+	// req.body jayse hi multer req.files deta hy for files
+	// Now we only want the 1st property, there are other as well, so avatar[0]
+	const avatarLocalPath = req.files?.avatar[0]?.path;
+	const coverImageLocalPath = req.files?.converImage[0]?.path;
+	if (!avatarLocalPath) {
+		throw new ApiError(400, "Please upload the avatar")
+	}
+	// #5 -> upload to cloudinary
+	// upload me time toh lagega hi -> await
+	const avatar = await uploadOnCloudinary(avatarLocalPath)
+	const coverImage = await ...
+	if (!avatar) throw ...
+
+	// #6 -> db entry
+	// user se liya data as it is paste karo db me jinka kuch value define nahi liya like email, fullname etc
+	const user = await User.create({
+		username: username.toLowerCase(),
+		email,
+		fullName,
+		password,
+		avatar: avatar.url,
+		coverImage: coverImage?.url || ""
+	})
+	// #7 -> remove password and refresh token field from response so that it is not sent to the user
+    const createdUser = await User.findById(user._id).select(
+        "-password -refreshToken"
+    );
+    // #8 -> check for user creation
+    if (!createdUser) {
+        throw new ApiError(500, "Something went wrong :: User not created");
+    }
+    // #9 -> send response
+    return res
+        .status(201)
+        .json(
+            new ApiResponse(200, createdUser, "User registered successfully")
+        );
+
+
+
+})
+export { registerUser };
+```
+
+# Router and Controller - Login Logic
