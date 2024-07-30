@@ -876,4 +876,9 @@ const registerUser = asyncHandler(async (req, res,next) => {
 export { registerUser };
 ```
 
+-   Now there could be multiple error while debugging. Some common are ->
+    -   _TypeError: Cannot read properties of undefined_
+        -   When coverImage is put blank maybe there has been some mistakes in conditional checks. Mostly in conditional check we get these kind of errors
+    -
+
 # Router and Controller - Login Logic

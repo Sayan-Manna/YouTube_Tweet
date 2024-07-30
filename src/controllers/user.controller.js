@@ -9,7 +9,7 @@ const registerUser = asyncHandler(async (req, res, next) => {
     // Ab data aayega req.body mein, url se bhi aa sakta hai as req param, cookies se bhi, form se bhi etc
     // extract the data then
     const { username, email, fullName, password } = req.body;
-    console.log("Username", username);
+    // console.log("Username", username);
 
     // **validation server side - not empty etc -----------------------------
     // if (fullName === "" || username === "" || email === "" || password === "") {
@@ -37,9 +37,18 @@ const registerUser = asyncHandler(async (req, res, next) => {
         throw new ApiError(409, "User with email or username already exists");
     }
     // **required files are there or not - avatar -> get the local path -----------------------------
-    console.log(req.files);
+    // console.log(req.files);
     const avatarLocalPath = req.files?.avatar[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage[0]?.path;
+    // const coverImageLocalPath = req.files?.coverImage[0]?.path; // will throw error if not passed
+    let coverImageLocalPath;
+    if (
+        req.files &&
+        Array.isArray(req.files.coverImage) &&
+        req.files.coverImage.length > 0
+    ) {
+        coverImageLocalPath = req.files.coverImage[0].path;
+    }
+
     if (!avatarLocalPath) {
         throw new ApiError(400, "Please upload an avatar");
     }
