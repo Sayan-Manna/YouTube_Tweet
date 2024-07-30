@@ -641,16 +641,13 @@ export { ApiResponse };
     const uploadOnCloudinary = async (localFilePath) => {
         try {
             if (!localFilePath) {
-                throw new Error("Local file path is required");
+                return null; // immediately return null
             }
-            const response = await cloudinary.uploader
-                .upload(localFilePath, {
-                    resource_type: "auto", // Automatically determine the type of file
-                })
-                .catch((error) => {
-                    throw new Error("Error uploading file to cloudinary");
-                });
-            console.log("Upload successful: ", response.url);
+            const response = await cloudinary.uploader.upload(localFilePath, {
+                resource_type: "auto", // Automatically determine the type of file
+            });
+            // when successfully upload remove the temp file
+            fs.unlinkSync(localFilePath);
             return response;
         } catch (error) {
             // when you remove a file, it basically unlinks from the file system - os concept
@@ -835,7 +832,15 @@ const registerUser = asyncHandler(async (req, res,next) => {
 	// req.body jayse hi multer req.files deta hy for files
 	// Now we only want the 1st property, there are other as well, so avatar[0]
 	const avatarLocalPath = req.files?.avatar[0]?.path;
-	const coverImageLocalPath = req.files?.converImage[0]?.path;
+	// const coverImageLocalPath = req.files?.converImage[0]?.path; -> Error
+    let coverImageLocalPath;
+    if (
+        req.files &&
+        Array.isArray(req.files.coverImage) &&
+        req.files.coverImage.length > 0
+    ) {
+        coverImageLocalPath = req.files.coverImage[0].path;
+    }
 	if (!avatarLocalPath) {
 		throw new ApiError(400, "Please upload the avatar")
 	}
