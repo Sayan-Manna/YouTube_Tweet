@@ -4,7 +4,24 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
-const registerUser = asyncHandler(async (req, res, next) => {
+const generateAccessAndRefereshTokens = async (userId) => {
+    try {
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        // set refresh token to the user and save the refresh token in the db
+        user.refreshToken = refreshToken;
+        // Now we have saved only one field thus mongoose will give error as we have not saved the required password field etc, to avoid use make it false
+        await user.save({ validateBeforeSave: false });
+
+        return { accessToken, refreshToken };
+    } catch (error) {
+        throw new ApiError(500, "Token generation failed");
+    }
+};
+
+const registerUser = asyncHandler(async (req, res) => {
     // **get user data from frontend -----------------------------
     // Ab data aayega req.body mein, url se bhi aa sakta hai as req param, cookies se bhi, form se bhi etc
     // extract the data then
@@ -86,4 +103,95 @@ const registerUser = asyncHandler(async (req, res, next) => {
         );
 });
 
-export { registerUser };
+const loginUser = asyncHandler(async (req, res) => {
+    // ** get data from req body -----------------------------
+    const { email, username, password } = req.body;
+    if (!username && !email) {
+        throw new ApiError(400, "Username or email is required");
+    }
+    // ** find username or email -----------------------------
+    const user = await User.findOne({ $or: [{ email }, { username }] });
+    // ** find the user -----------------------------
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+    // ** password check -----------------------------
+    const isPasswordCorrect = await user.isPasswordCorrect(password);
+    if (!isPasswordCorrect) {
+        throw new ApiError(401, "Invalid user credentials/unauthenticated");
+    }
+    // **access and refresh token generation and send back to user -----------------------------
+    const { accessToken, refreshToken } = await generateAccessAndRefereshTokens(
+        user._id
+    );
+    // ** send cookies to the user -----------------------------
+    // remove password and refresh token from the response so that it is not sent to the user
+    const loggedInUser = await User.findById(user._id).select(
+        "-password -refreshToken"
+    );
+    const options = {
+        // Because if these 2 options are not set then the cookie will not be modified/set in the browser/client
+        httpOnly: true,
+        secure: true, // only for https
+    };
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                {
+                    // you can send any data. Here if user want to save the token in the local storage -> not a good practice but if the user is using mobile app
+                    user: loggedInUser,
+                    accessToken,
+                    refreshToken,
+                },
+                "User logged in successfully"
+            )
+        );
+});
+
+const logoutUser = asyncHandler(async (req, res) => {
+    // Why creating middleware for this?
+    // because how to get the user??? In previous functions we are getting info from req.body but in logout obviously we'll not give form to user to logout
+    // That's when we need middleware -> middleware: jaane se pehle milke jana
+    // reset the refresh token in the db
+    // Cookies cleared from the client side
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            // Unsetting the refresh token effectively invalidates the session, meaning the user would need to log in again to obtain a new session.
+            $unset: {
+                refreshToken: 1, // this removes the field from document
+            },
+        },
+        // This option tells Mongoose to return the updated document after the update operation
+        {
+            new: true,
+        }
+    );
+    // * or using findById ------|
+    // Find the user by ID
+    // const user = await User.findById(req.user._id);
+    // if (!user) {
+    //     throw new ApiError(404, "User not found");
+    // }
+    // // Unset the refreshToken field
+    // user.refreshToken = undefined; // or `null` if you prefer, but `undefined` removes it from the document
+    // // Save the updated user document
+    // await user.save();
+
+    const options = {
+        httpOnly: true,
+        secure: true,
+    };
+
+    return res
+        .status(200)
+        .clearCookie("accessToken", options)
+        .clearCookie("refreshToken", options)
+        .json(new ApiResponse(200, {}, "User logged Out"));
+});
+
+export { registerUser, loginUser, logoutUser };

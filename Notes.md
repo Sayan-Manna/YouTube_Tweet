@@ -378,32 +378,45 @@ status: {
 
 -   **Middleware** : - If we are requesting a route /about, first the checking will be if I am logged in or not, these chekings are done by middlewares. There can be multiple middlewares. Now it has flags named `next`. It simply refers that one middleware's job is done, go to next middleware if any, if there isn't any then it will be discarded and we'll get the response. Generally we get 4 params in any request `error`,`req`,`res`,`next`
 -   Create an `utils/asyncHandler.js`
-
     ```js
     // src/utils/asyncHanfler.js
     // Using Promise
     const asyncHandler = (requestHandler) => {
-        return (req, res, next) => {
-            Promise.resolve(requestHandler(req, res, next)).catch((error) =>
-                next(error)
-            );
-        };
+    return (req, res, next) => {
+    Promise.resolve(requestHandler(req, res, next)).catch((error) =>
+    next(error) // next(error)) will pass the error to the Express error-handling middleware, which means it won’t handle the error directly but instead let another piece of middleware handle it
+    );
     };
-
+    };
+    // or
+    const asyncHandler = (requestHandler) => {
+        return (req, res, next) => {
+            Promise.resolve(requestHandler(req, res, next))
+                .catch((error) => {
+                    res.status(error.code || 500).json({
+                        success: false,
+                        message: error.message || "Something went wrong",
+                    });
+                });
+        };
+    };
     // Using async/await
     // asyncHandler is a higher order function so it can accept a function as an argument and return a new function.
-    // const asyncHandler = (fn) => async (req, res, next) => {
-    //     try {
-    //       await fn(req, res, next);
-    //     } catch (error) {
-    //         res.status(error.code || 500).json({
-    //             success: false,
-    //             message: error.message || "Something went wrong",
-    //         });
-    //     }
+    // const asyncHandler = (fn) => {
+    // return async (req,res,next) => {
+    // try {
+    // await fn(req, res, next);
+    // } catch (error) {
+    // res.status(error.code || 500).json({
+    // success: false,
+    // message: error.message || "Something went wrong",
+    // });
+    // }
+    // }
     // };
     export { asyncHandler };
-    ```
+
+        ```
 
 -   Now we want to optimise the responses when error occurs, because later we might get confuse if we want to show the message first or the status code etc.
 
@@ -417,9 +430,9 @@ class ApiError extends Error {
         errorStack = ""
     ) {
         // to override, we use super, now message has been passed, so it'll be overridden definitely
-        super(message);
+        super(message); // must call super of the main class(Error)
         this.statusCode = statusCode;
-        this.data = null;
+        this.data = null; // typically, an error response might not have associated “data” in the same way that a successful response might
         this.message = message;
         this.success = false;
         this.errors = errors;
@@ -439,12 +452,26 @@ export { ApiError };
 class ApiResponse {
     constructor(statusCode, data, message = "Success") {
         this.statusCode = statusCode;
-        this.data = data;
+        this.data = data; // containing the result of a successful API operation.
         this.message = message;
-        this.success = statusCode < 400;
+        this.success = statusCode < 400; // boolean :: as codes in the 2xx and 3xx range generally indicate success
     }
 }
 export { ApiResponse };
+
+/* For Example
+
+const successResponse = new ApiResponse(200, { id: 1, name: "John Doe" }, "User fetched successfully");
+console.log(successResponse);
+
+// Output:
+// {
+//   statusCode: 200,
+//   data: { id: 1, name: "John Doe" },
+//   message: "User fetched successfully",
+//   success: true
+// }
+*/
 ```
 
 ---
@@ -505,6 +532,7 @@ export { ApiResponse };
     // It signals Mongoose to move to the next middleware function in the chain or to proceed with saving the document.
     // next() is called to ensure the middleware does not block the save operation.
     userSchema.pre("save", async function (next) {
+    	// isModified is a method of the Mongoose document instance, so this.isModified
         if (!this.isModified("password")) return next();
 
         this.password = await bcrypt.hash(this.password, 10);
@@ -641,12 +669,13 @@ export { ApiResponse };
     const uploadOnCloudinary = async (localFilePath) => {
         try {
             if (!localFilePath) {
-                return null; // immediately return null
+                return null;
+                throw new Error("Local file path is required");
             }
             const response = await cloudinary.uploader.upload(localFilePath, {
                 resource_type: "auto", // Automatically determine the type of file
             });
-            // when successfully upload remove the temp file
+            console.log("Upload successful: ", response.url);
             fs.unlinkSync(localFilePath);
             return response;
         } catch (error) {
@@ -832,8 +861,8 @@ const registerUser = asyncHandler(async (req, res,next) => {
 	// req.body jayse hi multer req.files deta hy for files
 	// Now we only want the 1st property, there are other as well, so avatar[0]
 	const avatarLocalPath = req.files?.avatar[0]?.path;
-	// const coverImageLocalPath = req.files?.converImage[0]?.path; -> Error
-    let coverImageLocalPath;
+	// const coverImageLocalPath = req.files?.converImage[0]?.path; -> ERROR
+	let coverImageLocalPath;
     if (
         req.files &&
         Array.isArray(req.files.coverImage) &&
@@ -841,6 +870,7 @@ const registerUser = asyncHandler(async (req, res,next) => {
     ) {
         coverImageLocalPath = req.files.coverImage[0].path;
     }
+
 	if (!avatarLocalPath) {
 		throw new ApiError(400, "Please upload the avatar")
 	}
@@ -874,16 +904,172 @@ const registerUser = asyncHandler(async (req, res,next) => {
         .json(
             new ApiResponse(200, createdUser, "User registered successfully")
         );
-
-
-
 })
 export { registerUser };
+
 ```
 
--   Now there could be multiple error while debugging. Some common are ->
-    -   _TypeError: Cannot read properties of undefined_
-        -   When coverImage is put blank maybe there has been some mistakes in conditional checks. Mostly in conditional check we get these kind of errors
-    -
+# Router and Controller - Login + Cookies
 
-# Router and Controller - Login Logic
+> [!info] ### Access and Refresh Token Basics :
+>
+> -   It's a modern practice to create both tokens otherwise only access token will also work
+> -   The only difference between them is that Refresh token is long-lived compared to access token
+> -   **Access Token**: As long as you have valid/not expired access token, if you are authenticated, do your stuffs of where you have access to. Now if I set the time as 15min. You have to login again after 15min if you do not have refresh token.
+> -   **Refresh Token** : The user and DB has Refresh Token. Now once you get logged out, the user will hit certain endpoint and the the user's and db's refresh tokens will be checked, if equal, the user will be given new access token to access content again and get autheticated without password.
+
+-   Now let's create the Login user logic
+
+```js
+// user.controller.js
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { User } from "../models/user.model.js";
+...
+...
+const loginUser = asyncHandler(async (req, res) => {
+	// #1 -> get data from user -> req.body
+	const {email, username, password} = req.body
+	// #2 -> check if email or username is empty
+	if (!email && !username) {
+		throw new ApiError(400, "Username or email is required")
+	}
+	// #3 -> find the user with specific email or username in db
+	const user = await User.findOne({ $or: [{username}, {email}]})
+	// #4 -> check in db if user with this username or email exist
+	if (!user) {
+		throw new ApiError(404, "User not found")
+	}
+	// #5 -> check for password
+	/* In db we've stored the hashed password using bcryptJS, now we also created one function
+	* named `isPasswordCorrect()` inside User model that basically compares the original and hashed password
+	* here `user` -> is our actual user found from db schema
+	*/
+	const isPasswordCorrect = await user.isPasswordCorrect(password);
+	if (!isPasswordCorrect) {
+		throw new ApiError(401, "Invalid User credentials/unauthenticated")
+	}
+	// #6 -> generate access and refresh token
+	const {accessToken, refreshToken} = await user.generateAccessAndRefreshToken(user._id)
+	// #7 -> remove password and refresh token from response as we don't want to give this to the user as response
+	const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+	// #8 -> send cookies to the user -> cookies access kr paa rhe hy cookieparser middleware ke wajay se
+	const options = {
+		// Because if these 2 options, cookie will be modified/set from the server only
+		httpOnly : true,
+		secure : true
+	}
+	// send response and cookies
+	return res
+	.status(200)
+	.cookie("accessToken", accessToken, options)
+	.cookie("refreshToken", refreshToken, options)
+	.json(
+		new ApiResponse(
+			200,
+			{
+				// you can send any data. Here if user want to save the token in the local storage -> not a good practice but if the user is using mobile app
+				user: loggedInUser,
+				accessToken,
+				refreshToken,
+			},
+			"User logged in successfully"
+		)
+	)
+})
+const generateAccessAndRefreshToken = async (userId) => {
+	try{
+		// get the user from the id
+		const user = await User.findById(userId);
+		const accessToken = user.generateAccessToken(); // this function was written in user model
+        const refreshToken = user.generateRefreshToken();
+		// set the refresh token to the user -> as refreshtoken pehle se generated nhi tha and use db me daal na hy, so set karo
+		user.refreshToken = refreshToken
+		// save the refresh token in db ->
+		// Now we have saved only one field thus mongoose will give error as we have not saved the required password field etc, to avoid use make it false
+		await user.save({validateBeforeSave : false})
+
+        return {accessToken, refreshToken}
+	}catch(error) {
+		throw new ApiError(500, "Token generation failed");
+	}
+}
+
+export {registerUser, logInUser, ...}
+```
+
+-   Now create the route for login
+
+```js
+// user.router.js
+import {loginUser,...} from "../controllers/user.controller.js";
+...
+...
+router.route("/login").post(logInUser)
+...
+export default router;
+```
+
+# Router and Controller - Logout + Cookies + Middleware
+
+-   Now let's create Logout user logic and find the reason for middleware
+
+```js
+// user.controller.js
+...
+...
+const logoutUser = asyncHandler(async (req, res, next) => {
+	// Why creating middleware for this?
+    // because how to get the user??? In previous functions we are getting info from req.body but in logout obviously we'll not give form to user to logout
+    // That's when we need middleware -> middleware: jaane se pehle milke jana
+    // reset the refresh token in the db
+
+})
+
+```
+
+-   Create our middleware `src/middleware/auth.middleware.js`
+
+```js
+import { ApiError } from "../utils/ApiError.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import jwt from "jsonwebtoken";
+import { User } from "../models/user.model.js";
+
+// This will verify is user is there or not
+export const verifyJWT = asyncHandler(async (req, _, next) => {
+    try {
+        // req has access to cookies due to cookie-parser middleware
+        // Now if the user is on mobile app then the token will be sent in the headers so we are checking both and that's why we are using the optional(?) here
+        const token =
+            req.cookies?.accessToken ||
+            req.headers("Authorization").replace("Bearer ", ""); // Authorization: Bearer <token> -> as we only need the value of the token to extract
+        if (!token) {
+            throw new ApiError(401, "Unauthorized request");
+        }
+        // verify the token using jwt
+        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        const user = await User.findById(decodedToken?._id).select(
+            "-password -refreshToken"
+        ); // we have added _id as key in user model with value _id, here we are putting the key
+        if (!user) {
+            throw new ApiError(401, "Invalid Access Token");
+        }
+        req.user = user;
+        next();
+    } catch (error) {
+        throw new ApiError(401, error?.message || "Invalid Access Token");
+    }
+});
+```
+
+-   Now Create the secured route for it. We need secured route because it requires the user to be authenticated before they can access it. The security is enforced by the verifyJWT middleware function
+-   The /logout route is responsible for ending a user’s session by clearing the refresh token in the database and deleting authentication cookies on the client side. This is a sensitive operation that should only be performed by the authenticated user who owns the session.
+
+```js
+// router/user.router.js
+...
+router.route("/logout").post(verifyJWT, logoutUser);
+
+```
+
+#
