@@ -30,8 +30,21 @@ const uploadOnCloudinary = async (localFilePath) => {
         return null;
     }
 };
+const deleteFromCloudinary = async (public_id, resource_type = "image") => {
+    try {
+        if (!public_id) {
+            throw new Error("Public ID is required");
+        }
+        const response = await cloudinary.uploader.destroy(public_id, {
+            resource_type,
+        });
+        console.log("Delete Response:", response);
+    } catch (error) {
+        console.error("Error in deleting cloudinary assets ", error);
+    }
+};
 
-export { uploadOnCloudinary };
+export { uploadOnCloudinary, deleteFromCloudinary };
 
 // (async function () {
 
