@@ -297,13 +297,14 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     if (!avatarLocalPath) {
         throw new ApiError(400, "Avatar file is missing");
     }
-    // Delete old avatar from cloudinary
-    if (user.avatarPublicId) {
-        await deleteFromCloudinary(user.avatarPublicId);
-    }
+
     const avatar = await uploadOnCloudinary(avatarLocalPath);
     if (!avatar || !avatar.url) {
         throw new ApiError(400, "Error while uploading avatar");
+    }
+    // Delete old avatar from cloudinary
+    if (user.avatarPublicId) {
+        await deleteFromCloudinary(user.avatarPublicId);
     }
     const updatedUser = await User.findByIdAndUpdate(
         req.user?._id,
@@ -330,14 +331,14 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Cover image file is missing");
     }
 
-    // delete old image - assignment
-    if (user.coverImagePublicId) {
-        await deleteFromCloudinary(user.coverImagePublicId);
-    }
     const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
     if (!coverImage.url) {
         throw new ApiError(400, "Error while uploading on avatar");
+    }
+    // delete old image - assignment
+    if (user.coverImagePublicId) {
+        await deleteFromCloudinary(user.coverImagePublicId);
     }
 
     const updatedUser = await User.findByIdAndUpdate(
