@@ -393,32 +393,32 @@ status: {
         // or
         const asyncHandler = (requestHandler) => {
 
-    return (req, res, next) => {
-            Promise.resolve(requestHandler(req, res, next))
-                .catch((error) => {
-                    res.status(error.code || 500).json({
-                        success: false,
-                        message: error.message || "Something went wrong",
-                    });
-                });
-        };
+        return (req, res, next) => {
+                Promise.resolve(requestHandler(req, res, next))
+                    .catch((error) => {
+                        res.status(error.code || 500).json({
+                            success: false,
+                            message: error.message || "Something went wrong",
+                        });
+                    });
+            };
 
-        // Using async/await
-        // asyncHandler is a higher order function so it can accept a function as an argument and return a new function.
-        // const asyncHandler = (fn) => {
-        //     return async (req,res,next) => {
-        //       try {
-        //         await fn(req, res, next);
-        //       } catch (error) {
-        //           res.status(error.code || 500).json({
-        //             success: false,
-        //             message: error.message || "Something went wrong",
-        //           });
-        //       }
-        //     }
-        // };
-        })
-        export { asyncHandler };
+            // Using async/await
+            // asyncHandler is a higher order function so it can accept a function as an argument and return a new function.
+            // const asyncHandler = (fn) => {
+            //     return async (req,res,next) => {
+            //       try {
+            //         await fn(req, res, next);
+            //       } catch (error) {
+            //           res.status(error.code || 500).json({
+            //             success: false,
+            //             message: error.message || "Something went wrong",
+            //           });
+            //       }
+            //     }
+            // };
+            })
+            export { asyncHandler };
 
         ```
 
