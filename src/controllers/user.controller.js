@@ -7,6 +7,7 @@ import {
 } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefereshTokens = async (userId) => {
     try {
@@ -246,18 +247,18 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 // Change user's password
 const changeCurrentPassword = asyncHandler(async (req, res) => {
-    // obviously user should be logged in to change the password and he must put the old password before creating a new one
     const { oldPassword, newPassword } = req.body;
-    const user = User.findById(req.user?._id);
-    if (!user) {
-        return ApiError(404, "User not found");
-    }
+
+    const user = await User.findById(req.user?._id);
     const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+
     if (!isPasswordCorrect) {
         throw new ApiError(400, "Invalid old password");
     }
+
     user.password = newPassword;
     await user.save({ validateBeforeSave: false });
+
     return res
         .status(200)
         .json(new ApiResponse(200, {}, "Password changed successfully"));

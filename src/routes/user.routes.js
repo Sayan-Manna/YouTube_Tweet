@@ -32,11 +32,13 @@ router.route("/register").post(
 );
 router.route("/login").post(loginUser);
 
-// secured routes
+// secured routes : only verified users can access
 router.route("/logout").post(verifyJWT, logoutUser);
 router.route("/refresh-token").post(refreshAccessToken);
 router.route("/change-password").post(verifyJWT, changeCurrentPassword);
 router.route("/current-user").get(verifyJWT, getCurrentUser);
+// The PATCH method is used to make partial updates to an existing resource. It applies changes to specific fields of a resource without modifying the entire resource.
+//In this case, if a user is updating only part of their account details (e.g., changing their email address or username), PATCH is the appropriate method.
 router.route("/update-account").patch(verifyJWT, updateAccountDetails);
 
 router
