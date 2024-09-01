@@ -363,6 +363,151 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
         );
 });
 
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params;
+
+    if (!username?.trim()) {
+        throw new ApiError(400, "username is missing");
+    }
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase(),
+            },
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers",
+            },
+        },
+        // Now to get how many channels I have subscribed to
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber", // got from schema
+                as: "subscribedTo",
+            },
+        },
+        // Now to add these fields with additional fields
+        {
+            $addFields: {
+                subscribersCount: {
+                    $size: "$subscribers",
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo",
+                },
+                // subscribed or not button status
+                isSubscribed: {
+                    $cond: {
+                        if: {
+                            $in: [req.user?._id, "$subscribers.subscriber"],
+                        },
+                        then: true,
+                        else: false,
+                    },
+                },
+            },
+        },
+        // Now project selectd fields
+        {
+            $project: {
+                fullName: 1,
+                username: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1,
+                email: 1,
+                createdAt: 1,
+            },
+        },
+    ]);
+    console.log("Channel : ", channel);
+    if (!channel || channel.length === 0) {
+        throw new ApiError(404, "Channel does not exist");
+    }
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            channel[0], // because we are getting only one channel
+            "user channel fetched successfully"
+        )
+    );
+});
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                // new mongoose.Types.ObjectId(req.user._id): This converts the user’s ID from the request (req.user._id) into a MongoDB ObjectId. In many cases, MongoDB IDs are stored as ObjectId types, so this conversion ensures the types match when performing the comparison.
+                _id: new mongoose.Types.ObjectId(req.user._id), // converting string to object id
+            },
+        },
+        {
+            // Joins the videos collection with the watchHistory field, which holds video IDs.
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                // The pipeline option allows you to specify additional aggregation operations to perform on the joined collection.
+                // Here, we're using the pipeline option to perform a lookup on the users collection to get the owner of the video.
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            // Here, we're using the pipeline option to project only the required fields from the owner document.
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        username: 1,
+                                        avatar: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    // The $addFields stage is used to add the owner field to the video document.
+                    // The $first operator is used to get the first element from the owner array.
+                    // This is necessary because the $lookup stage returns an array of documents.
+                    // Since we're only interested in the first element, we use the $first operator to get it.
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: "$owner",
+                            },
+                        },
+                    },
+                ],
+            },
+        },
+    ]);
+    if (!user.length || !user[0].watchHistory.length) {
+        return res
+            .status(404)
+            .json(new ApiResponse(404, [], "No watch history found"));
+    }
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                user[0].watchHistory,
+                "Watch history fetched successfully"
+            )
+        );
+});
 export {
     registerUser,
     loginUser,
@@ -373,4 +518,6 @@ export {
     updateAccountDetails,
     updateUserAvatar,
     updateUserCoverImage,
+    getUserChannelProfile,
+    getWatchHistory,
 };
