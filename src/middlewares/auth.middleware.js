@@ -3,7 +3,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken";
 import { User } from "../models/user.model.js";
 
-// This will verify is user is there or not
+// This will verify the user's token and check if the user is authenticated or not
 export const verifyJWT = asyncHandler(async (req, _, next) => {
     try {
         // req has access to cookies due to cookie-parser middleware
